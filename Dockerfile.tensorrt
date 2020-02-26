@@ -1,0 +1,138 @@
+FROM balenalib/jetson-nano-ubuntu:bionic as base
+
+WORKDIR /usr/src/app
+
+ENV DEBIAN_FRONTEND noninteractive
+
+COPY ./cuda-repo-l4t-10-0-local-10.0.166_1.0-1_arm64.deb .
+COPY ./libcudnn7_7.3.1.28-1+cuda10.0_arm64.deb .
+COPY ./libcudnn7-dev_7.3.1.28-1+cuda10.0_arm64.deb .
+
+RUN     dpkg -i cuda-repo-l4t-10-0-local-10.0.166_1.0-1_arm64.deb && \
+        apt-key add /var/cuda-repo-10-0-local-10.0.166/*.pub && \
+        dpkg -i libcudnn7_7.3.1.28-1+cuda10.0_arm64.deb && \
+        dpkg -i libcudnn7-dev_7.3.1.28-1+cuda10.0_arm64.deb && \
+        apt-get update && \
+        apt-get install --yes \
+            cuda-toolkit-10-0 \
+            libhdf5-serial-dev \
+            pkg-config \
+            hdf5-tools \
+            libhdf5-dev \
+            zlib1g-dev \
+            zip \
+            wget \
+            libjpeg8-dev \
+            lbzip2 \
+            python3 \
+            python3-pip && \
+        dpkg --remove cuda-repo-l4t-10-0-local-10.0.166 && \
+        dpkg -P cuda-repo-l4t-10-0-local-10.0.166 && \
+        rm -rf *.deb && \
+        rm -rf /usr/local/cuda-10.0/doc && \
+        rm /usr/local/cuda-10.0/targets/aarch64-linux/lib/*.a && \
+        echo "/usr/lib/aarch64-linux-gnu/tegra" > /etc/ld.so.conf.d/nvidia-tegra.conf && \
+        ldconfig && \
+        rm -rf /var/lib/apt/lists/* && \
+        apt-get clean
+
+COPY ./tensorrt_5.0.6.3-1+cuda10.0_arm64.deb .
+COPY ./libnvinfer5_5.0.6-1+cuda10.0_arm64.deb .
+COPY ./libnvinfer-dev_5.0.6-1+cuda10.0_arm64.deb .
+COPY ./libnvinfer-samples_5.0.6-1+cuda10.0_all.deb .
+COPY ./python3-libnvinfer_5.0.6-1+cuda10.0_arm64.deb .
+COPY ./python3-libnvinfer-dev_5.0.6-1+cuda10.0_arm64.deb .
+COPY ./uff-converter-tf_5.0.6-1+cuda10.0_arm64.deb .
+COPY ./graphsurgeon-tf_5.0.6-1+cuda10.0_arm64.deb .
+
+RUN     dpkg -i tensorrt_5.0.6.3-1+cuda10.0_arm64.deb \
+                libnvinfer5_5.0.6-1+cuda10.0_arm64.deb \
+                libnvinfer-dev_5.0.6-1+cuda10.0_arm64.deb \
+                libnvinfer-samples_5.0.6-1+cuda10.0_all.deb \
+                python3-libnvinfer_5.0.6-1+cuda10.0_arm64.deb \
+                python3-libnvinfer-dev_5.0.6-1+cuda10.0_arm64.deb \
+                graphsurgeon-tf_5.0.6-1+cuda10.0_arm64.deb \
+                uff-converter-tf_5.0.6-1+cuda10.0_arm64.deb && \
+        rm -rf *.deb && \
+        rm -rf /usr/src/tensorrt/python/data && \
+        rm -rf /usr/src/tensorrt/data
+
+COPY ./nvidia_drivers.tbz2 .
+COPY ./config.tbz2 .
+
+RUN     tar xjf nvidia_drivers.tbz2 -C / && \
+        tar xjf config.tbz2 -C / --exclude=etc/hosts --exclude=etc/hostname && \
+        echo "/usr/lib/aarch64-linux-gnu/tegra" > /etc/ld.so.conf.d/nvidia-tegra.conf && \
+        ldconfig && \
+        rm -rf *.tbz2
+
+ARG     WHL_URL_PREFIX=https://jetson-nano-wheels.s3-eu-west-1.amazonaws.com
+ENV UDEV=1
+ENV PATH="${PATH}:/usr/local/cuda-10.0/bin"
+
+RUN     wget ${WHL_URL_PREFIX}/Pillow-6.1.0-cp36-cp36m-linux_aarch64.whl && \
+        wget ${WHL_URL_PREFIX}/grpcio-1.22.0-cp36-cp36m-linux_aarch64.whl && \
+        wget ${WHL_URL_PREFIX}/h5py-2.9.0-cp36-cp36m-linux_aarch64.whl && \
+        wget ${WHL_URL_PREFIX}/numpy-1.16.4-cp36-cp36m-linux_aarch64.whl && \
+        wget ${WHL_URL_PREFIX}/pycuda-2019.1.1-cp36-cp36m-linux_aarch64.whl && \
+        python3 -m pip install -U pip && \
+        python3 -m pip install \
+            Pillow-6.1.0-cp36-cp36m-linux_aarch64.whl \
+            grpcio-1.22.0-cp36-cp36m-linux_aarch64.whl \
+            h5py-2.9.0-cp36-cp36m-linux_aarch64.whl \
+            numpy-1.16.4-cp36-cp36m-linux_aarch64.whl \
+            pycuda-2019.1.1-cp36-cp36m-linux_aarch64.whl \
+            absl-py py-cpuinfo psutil portpicker \
+            six mock requests gast \
+            astor termcolor protobuf \
+            keras-applications keras-preprocessing \
+            wrapt google-pasta && \
+        python3 -m pip install \
+            --pre --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v42 tensorflow-gpu && \
+        rm *.whl
+
+#RUN     python3 -m pip install -U pip && \
+#        python3 -m pip install \
+#                numpy h5py grpcio absl-py \
+#                py-cpuinfo psutil portpicker \
+#                six mock requests gast \
+#                astor termcolor protobuf \
+#                keras-applications keras-preprocessing \
+#                wrapt google-pasta && \
+#        python3 -m pip install \
+#                --pre --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v42 tensorflow-gpu && \
+#        python3 -m pip install pycuda
+
+# Remove unncessary files for smaller image
+RUN     rm -rf /usr/share/doc && \
+        rm /usr/lib/aarch64-linux-gnu/*.a
+
+FROM balenalib/jetson-nano-ubuntu:bionic as develop
+
+RUN     apt-get update && \
+        apt-get --yes install python3 && \
+        rm -rf /var/lib/apt/lists/* && \
+        apt-get clean
+
+COPY --from=base /usr/local/cuda-10.0 /usr/local/cuda-10.0
+COPY --from=base /usr/lib/python3.6/dist-packages /usr/lib/python3.6/dist-packages
+COPY --from=base /usr/lib/python3/dist-packages /usr/lib/python3/dist-packages
+COPY --from=base /usr/src/tensorrt /usr/src/tensorrt
+COPY --from=base /usr/lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu
+COPY --from=base /usr/local/lib /usr/local/lib
+
+RUN     echo "/usr/lib/aarch64-linux-gnu/tegra" > /etc/ld.so.conf.d/nvidia-tegra.conf && \
+        ldconfig
+
+WORKDIR /usr/src/tensorrt/samples/python/end_to_end_tensorflow_mnist
+
+ENV UDEV=1
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda-10.0/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra"
+
+CMD [ "sleep", "infinity" ]
+
+# The Hello-World TensorRT sample is run as follows:
+#       mkdir models
+#	python3 model.py
+#	python3 /usr/lib/python3.6/dist-packages/uff/bin/convert_to_uff.py models/lenet5.pb
+#       python3 sample.py
